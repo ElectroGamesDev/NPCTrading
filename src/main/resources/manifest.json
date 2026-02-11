@@ -1,0 +1,10 @@
+{
+  "Group": "com.electro",
+  "Name": "NPCTrading",
+  "Version": "1.0.0",
+  "Main": "com.electro.npctrading.NPCTradingPlugin",
+  "IncludesAssetPack": true,
+  "OptionalDependencies": {
+    "com.electro:HyCitizens": "*"
+  }
+}

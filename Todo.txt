@@ -1,0 +1,19 @@
+Commands
+HyCitizens Integration
+Scrollable container
+Put created NPCs in the "Traders" group
+Multiple NPCs for the same trading menu
+Automatically changing items every x time
+UI inspired by this - https://www.curseforge.com/hytale/mods/terraria-merchant-npcs
+Unlimited item support
+Have an "Edit NPC" button which open HyCitizens
+
+
+Linking/binding Citizens
+
+Test without hycitizens
+
+
+Credit HyUI
+
+give and receive multiple item types
