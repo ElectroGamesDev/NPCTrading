@@ -7,6 +7,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
+import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -22,7 +23,7 @@ public class MainCommand extends AbstractPlayerCommand{
 
     public MainCommand(@Nonnull NPCTradingPlugin plugin) {
         super("npctrading", "NPC Trading Commands");
-        this.requirePermission("npctrading.admin");
+        this.requirePermission("npctrading");
         this.addAliases("nt");
         this.setAllowsExtraArguments(true);
         this.plugin = plugin;
@@ -32,8 +33,19 @@ public class MainCommand extends AbstractPlayerCommand{
     protected void execute(@Nonnull CommandContext context, @Nonnull Store<EntityStore> store, @Nonnull Ref<EntityStore> ref, @Nonnull PlayerRef playerRef, @Nonnull World world) {
         String[] args = context.getInputString().split(" ");
 
-        if (args.length > 1) {
-            String traderName = args[1].toLowerCase();
+        Player player = store.getComponent(ref, Player.getComponentType());
+        if (player == null) {
+            return;
+        }
+
+        boolean hasAdminPermissions = player.hasPermission("npctrading.admin");
+
+        if (args.length > 1 || !hasAdminPermissions) {
+            String traderName = "__NULL__";
+            if (args.length >= 1) {
+                traderName = args[1].toLowerCase();
+            }
+
             List<String> traderNames = new ArrayList<>();
 
             Collection<Trader> traders = plugin.getTradersManager().getAllTraders();

@@ -1,7 +1,11 @@
 package com.electro.npctrading.manager;
 
+import com.electro.hycitizens.HyCitizensPlugin;
+import com.electro.hycitizens.models.CitizenData;
 import com.electro.npctrading.model.Trader;
 import com.electro.npctrading.util.ConfigManager;
+import com.hypixel.hytale.common.plugin.PluginIdentifier;
+import com.hypixel.hytale.server.core.plugin.PluginManager;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -24,6 +28,8 @@ public class TradersManager {
 
         Map<String, Object> allData = config.getAll();
 
+        PluginIdentifier hyCitizensId = new PluginIdentifier("com.electro", "HyCitizens");
+
         config.beginBatch();
         for (String key : allData.keySet()) {
             Object value = config.get(key);
@@ -32,14 +38,23 @@ public class TradersManager {
                 Trader trader = Trader.deserialize(map);
                 if (trader != null) {
                     traders.put(trader.getUuid(), trader);
+
+                    // Needed for backwards compatibility. It's not working, no point in using the code
+//                    if (PluginManager.get().getPlugin(hyCitizensId) != null) {
+//                        for (String id : trader.getCitizenIds()) {
+//                            CitizenData citizen = HyCitizensPlugin.get().getCitizensManager().getCitizen(id);
+//                            if (citizen == null) {
+//                                return;
+//                            }
+//                            citizen.setForceFKeyInteractionText(true);
+//                        }
+//                    }
                 } else {
                     getLogger().atWarning().log("Failed to deserialize trader at key: " + key);
                 }
             }
         }
         config.endBatch();
-
-        getLogger().atInfo().log("Loaded " + traders.size() + " trader(s)");
     }
 
     public void saveTraders() {

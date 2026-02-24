@@ -10,6 +10,8 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.plugin.PluginManager;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import java.awt.*;
@@ -35,6 +37,17 @@ public class TraderInteraction {
                 bindingSession.trader.addCitizenId(citizen.getId());
                 plugin.getTradersManager().saveTrader(bindingSession.trader);
                 plugin.getNPCBindManager().completeBinding(player.getUuid());
+
+                citizen.setForceFKeyInteractionText(true);
+
+                Ref<EntityStore> citizenRef = citizen.getNpcRef();
+                World world = Universe.get().getWorld(citizen.getWorldUUID());
+
+                if (world != null && citizenRef != null && citizenRef.isValid()) {
+                    world.execute(() -> {
+                        HyCitizensPlugin.get().getCitizensManager().setInteractionComponent(citizenRef.getStore(), citizenRef, citizen);
+                    });
+                }
 
                 player.sendMessage(Message.raw("You have successfully linked " + bindingSession.trader.getName() + " to " + citizen.getName() + "!")
                         .color(Color.GREEN));

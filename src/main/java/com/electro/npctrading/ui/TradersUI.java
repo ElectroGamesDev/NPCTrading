@@ -1479,7 +1479,7 @@ public class TradersUI {
                     true
             );
 
-            citizen.setFKeyInteractionEnabled(true);
+            citizen.setForceFKeyInteractionText(true);
             citizen.setGroup("Traders");
 
             hyCitizens.getCitizensManager().addCitizen(citizen, true);
