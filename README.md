@@ -1,4 +1,6 @@
-[![Join us on Discord](https://img.shields.io/badge/Discord-Join Community-7289DA?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/Snqz9E58Dr) [![Star on GitHub](https://img.shields.io/badge/GitHub-Source-181717?logo=github&logoColor=white&style=for-the-badge)](https://github.com/ElectroGamesDev/NPCTrading) [![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF0000?logo=kofi&logoColor=white&style=for-the-badge)](https://ko-fi.com/electrogames)
+[![Join us on Discord](https://img.shields.io/badge/Discord-Join%20Community-7289DA?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/Snqz9E58Dr)
+[![Star on GitHub](https://img.shields.io/badge/GitHub-Source-181717?logo=github&logoColor=white&style=for-the-badge)](https://github.com/ElectroGamesDev/NPCTrading)
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=kofi&logoColor=white&style=for-the-badge)](https://ko-fi.com/electrogames)
 
 **NPC Trading** is a full-featured trading system plugin that allows you to create custom NPC traders for your server.  
 Set up item exchanges, configure rotating trade offers, and integrate seamlessly with [HyCitizens](https://www.curseforge.com/hytale/mods/hycitizens) to create immersive merchant NPCs.
