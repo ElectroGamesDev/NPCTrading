@@ -1,10 +1,12 @@
 {
   "Group": "com.electro",
   "Name": "NPCTrading",
-  "Version": "1.0.2",
+  "Version": "1.1.0",
   "Main": "com.electro.npctrading.NPCTradingPlugin",
   "IncludesAssetPack": true,
+  "ServerVersion":"2026.02.19-1a311a592",
   "OptionalDependencies": {
-    "com.electro:HyCitizens": "*"
+    "com.electro:HyCitizens": "*",
+    "TheNewEconomy:VaultUnlocked": "*"
   }
 }

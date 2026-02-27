@@ -2,6 +2,7 @@ package com.electro.npctrading.ui;
 
 import au.ellie.hyui.builders.PageBuilder;
 import com.electro.npctrading.manager.TradeManager;
+import com.electro.npctrading.model.TradeIngredient;
 import com.electro.npctrading.model.TradeOffer;
 import com.electro.npctrading.model.Trader;
 import com.hypixel.hytale.component.Store;
@@ -74,7 +75,7 @@ public class TradeUI {
                     flex-weight: 1;
                     padding: 24 20 10 20;
                 }
-                
+
                 /* List Container */
                 .list-container {
                     layout-mode: TopScrolling;
@@ -115,27 +116,35 @@ public class TradeUI {
                 .output-icon-row {
                     layout: center;
                     flex-weight: 0;
-                    padding: 6;
+                    padding: 4;
                 }
 
                 .output-icon {
-                    anchor-width: 52;
-                    anchor-height: 52;
+                    anchor-width: 40;
+                    anchor-height: 40;
                 }
 
                 .output-name {
                     color: #ffffff;
-                    font-size: 13;
+                    font-size: 11;
                     font-weight: bold;
                     text-align: center;
-                    padding-top: 4;
+                    padding-top: 2;
                 }
 
                 .output-qty {
                     color: #aaaaaa;
-                    font-size: 11;
+                    font-size: 10;
                     text-align: center;
-                    padding-top: 2;
+                    padding-top: 1;
+                }
+
+                .output-currency {
+                    color: #FFD700;
+                    font-size: 12;
+                    font-weight: bold;
+                    text-align: center;
+                    padding-top: 4;
                 }
 
                 /* Divider */
@@ -143,8 +152,8 @@ public class TradeUI {
                     flex-weight: 0;
                     anchor-height: 1;
                     background-color: #ffffff(0.08);
-                    margin-top: 8;
-                    margin-bottom: 8;
+                    margin-top: 6;
+                    margin-bottom: 6;
                 }
 
                 /* Cost Section */
@@ -162,34 +171,67 @@ public class TradeUI {
                 .cost-row {
                     layout: center;
                     flex-weight: 0;
-                    padding-top: 4;
+                    padding-top: 3;
                 }
 
                 .cost-icon {
-                    anchor-width: 34;
-                    anchor-height: 34;
+                    anchor-width: 28;
+                    anchor-height: 28;
                 }
 
                 .cost-amount {
                     color: #FF6B6B;
-                    font-size: 13;
+                    font-size: 11;
                     font-weight: bold;
-                    padding-left: 6;
+                    padding-left: 4;
                 }
 
                 .cost-amount-affordable {
                     color: #7BED7B;
-                    font-size: 13;
+                    font-size: 11;
                     font-weight: bold;
-                    padding-left: 6;
+                    padding-left: 4;
+                }
+
+                .cost-currency {
+                    color: #FF6B6B;
+                    font-size: 11;
+                    font-weight: bold;
+                    text-align: center;
+                    padding-top: 3;
+                }
+
+                .cost-currency-affordable {
+                    color: #7BED7B;
+                    font-size: 11;
+                    font-weight: bold;
+                    text-align: center;
+                    padding-top: 3;
+                }
+
+                /* Stock */
+                .stock-text {
+                    color: #aaaaaa;
+                    font-size: 9;
+                    text-align: center;
+                    padding-top: 4;
+                }
+
+                .stock-empty {
+                    color: #FF4444;
+                    font-size: 9;
+                    font-weight: bold;
+                    text-align: center;
+                    padding-top: 4;
                 }
 
                 /* Buy Button */
                 .buy-btn {
                     background-color: #2ecc71(0.9);
-                    margin-top: 8;
+                    margin-top: 6;
                     border-radius: 4;
                     padding: 6;
+                    anchor-height: 25;
                 }
 
                 .buy-btn-text {
@@ -199,19 +241,20 @@ public class TradeUI {
                     text-align: center;
                 }
 
-                /* Can't Afford */
+                /* Can't Afford / Out of Stock */
                 .need-section {
                     layout: center;
                     flex-weight: 0;
-                    margin-top: 8;
+                    margin-top: 6;
                     padding: 6;
                     background-color: #8B0000(0.35);
                     border-radius: 4;
+                    anchor-height: 25;
                 }
 
                 .need-text {
                     color: #FF4444;
-                    font-size: 11;
+                    font-size: 10;
                     font-weight: bold;
                     text-align: center;
                 }
@@ -251,7 +294,7 @@ public class TradeUI {
 
                 .spacer-small {
                     flex-weight: 0;
-                    anchor-height: 6;
+                    anchor-height: 4;
                 }
             </style>
 
@@ -265,14 +308,14 @@ public class TradeUI {
     """);
 
         sb.append("""
-                    </div>
-                    
-                    <div class=\\"row-spacer\\"></div>
+            </div>
 
-                    <!-- Main Content -->
-                    <div class="main-content">
-                        <div class="list-container" style="anchor-height: 420;">
-            """);
+            <div class="row-spacer"></div>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <div class="list-container" style="anchor-height: 420;" data-hyui-scrollbar-style='"Common.ui" "DefaultScrollbarStyle"'>
+        """);
 
         // Build trade cards
         sb.append(buildTradeCards(trades, playerRef));
@@ -332,56 +375,95 @@ public class TradeUI {
                 }
 
                 TradeOffer offer = trades.get(i);
-                int playerHas = tradeManager.getItemCount(playerRef, offer.inputItem());
-                boolean canAfford = playerHas >= offer.inputQuantity();
-                int deficit = offer.inputQuantity() - playerHas;
+                offer.tickRestock();
+                boolean inStock = offer.isInStock();
+                boolean canAfford = inStock && tradeManager.canAfford(playerRef, offer);
 
-                String costAmountClass = canAfford ? "cost-amount-affordable" : "cost-amount";
+                sb.append("                            <div class=\"trade-card\">\n");
 
-                sb.append("""
-                                            <div class="trade-card">
-                                                <!-- Output Item -->
-                                                <div class="output-section">
+                // Output section
+                sb.append("                                <div class=\"output-section\">\n");
+                for (TradeIngredient output : offer.getOutputs()) {
+                    if (output.getType() == TradeIngredient.Type.ITEM) {
+                        sb.append("""
                                                     <div class="output-icon-row">
                                                         <span class="output-icon item-icon" data-hyui-item-id="%s"></span>
                                                     </div>
                                                     <p class="output-name">%s</p>
                                                     <p class="output-qty">x%d</p>
-                                                </div>
+                                """.formatted(
+                                output.getItemId(),
+                                formatItemName(output.getItemId()),
+                                output.getQuantity()
+                        ));
+                    } else {
+                        String currencyLabel = formatCurrency(output.getAmount(), output.getCurrency());
+                        sb.append("""
+                                                    <p class="output-currency">%s</p>
+                                """.formatted(currencyLabel));
+                    }
+                }
+                sb.append("                                </div>\n");
 
-                                                <div class="divider"></div>
+                sb.append("                                <div class=\"divider\"></div>\n");
 
-                                                <!-- Cost -->
+                // Cost section
+                sb.append("""
                                                 <div class="cost-section">
                                                     <p class="cost-label">Cost</p>
+                        """);
+                for (TradeIngredient input : offer.getInputs()) {
+                    if (input.getType() == TradeIngredient.Type.ITEM) {
+                        boolean hasEnough = tradeManager.getItemCount(playerRef, input.getItemId()) >= input.getQuantity();
+                        String amountClass = hasEnough ? "cost-amount-affordable" : "cost-amount";
+                        sb.append("""
                                                     <div class="cost-row">
                                                         <span class="cost-icon item-icon" data-hyui-item-id="%s"></span>
                                                         <p class="%s">%d</p>
                                                     </div>
-                                                </div>
+                                """.formatted(input.getItemId(), amountClass, input.getQuantity()));
+                    } else {
+                        String currencyLabel = formatCurrency(input.getAmount(), input.getCurrency());
+                        String amountClass = canAfford ? "cost-currency-affordable" : "cost-currency";
+                        sb.append("""
+                                                    <p class="%s">%s</p>
+                                """.formatted(amountClass, currencyLabel));
+                    }
+                }
+                sb.append("                                </div>\n");
 
-                    """.formatted(
-                        offer.outputItem(),
-                        formatItemName(offer.outputItem()),
-                        offer.outputQuantity(),
-                        offer.inputItem(),
-                        costAmountClass,
-                        offer.inputQuantity()
-                ));
+                // Stock indicator
+                if (!offer.isUnlimitedStock()) {
+                    if (inStock) {
+                        sb.append("""
+                                                    <p class="stock-text">Stock: %d / %d</p>
+                                """.formatted(offer.getCurrentStock(), offer.getMaxStock()));
+                    } else {
+                        sb.append("""
+                                                    <p class="stock-empty">Out of Stock</p>
+                                """);
+                    }
+                }
 
-                // Buy button or deficit message
+                // Buy button or disabled state
                 if (canAfford) {
                     sb.append("""
                                                 <button id="trade-%d" class="buy-btn">
                                                     <p class="buy-btn-text">Purchase</p>
                                                 </button>
-                        """.formatted(i));
+                            """.formatted(i));
+                } else if (!inStock) {
+//                    sb.append("""
+//                                                <div class="need-section secondary-button">
+//                                                    <p class="need-text">Out of Stock</p>
+//                                                </div>
+//                            """);
                 } else {
                     sb.append("""
-                                                <button id="trade-%d" class="need-section">
-                                                    <p class="need-text">Need %d more</p>
+                                                <button id="trade-%d" class="need-section secondary-button">
+                                                    <p class="need-text">Insufficient Resources</p>
                                                 </button>
-                        """.formatted(i, deficit));
+                            """.formatted(i));
                 }
 
                 sb.append("                            </div>\n");
@@ -402,7 +484,7 @@ public class TradeUI {
             if (!tradeManager.canAfford(playerRef, offer)) continue;
 
             page.addEventListener("trade-" + i, CustomUIEventBindingType.Activating, (ignored, ctx) -> {
-                tradeManager.executeTrade(playerRef, offer);
+                tradeManager.executeTrade(playerRef, offer, trader);
                 openTradeGUI(playerRef, store, trader);
             });
         }
@@ -429,34 +511,28 @@ public class TradeUI {
     public String formatItemName(@Nonnull String itemId) {
         String name = Message.translation(Item.getAssetMap().getAsset(itemId).getTranslationKey()).getAnsiMessage();
 
-        // Fallback since sometimes it fails to translate. This isn't 100% accurate, but its close enough
-//        if (name.startsWith("server.items.")) {
-//            name = name.substring("server.items.".length());
-//            if (name.endsWith(".name")) {
-//                name = name.substring(0, name.length() - ".name".length());
-//            }
-//
-//            // Remove the next underscore
-//            name = name.replaceFirst("[^_]*_", "");
-//
-//            name = name.replace("_", " ");
-//        }
-
         if (name.startsWith("server.")) {
-            // Remove ending ".name"
             name = name.replaceFirst("(?i)\\.name$", "");
 
-            // Remove everything before the last dot
             int lastDot = name.lastIndexOf('.');
             if (lastDot != -1) {
                 name = name.substring(lastDot + 1);
             }
 
-            // Replace underscores with spaces
             name = name.replace("_", " ");
         }
 
         return name;
+    }
+
+    private String formatCurrency(double amount, String currency) {
+        String amountStr = amount == Math.floor(amount)
+                ? String.valueOf((long) amount)
+                : String.format("%.2f", amount);
+        if (currency == null || currency.isBlank()) {
+            return "$" + amountStr;
+        }
+        return amountStr + " " + currency;
     }
 
     private String escapeHtml(@Nonnull String text) {

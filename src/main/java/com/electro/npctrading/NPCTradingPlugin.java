@@ -1,20 +1,16 @@
 package com.electro.npctrading;
 
-import com.electro.hycitizens.HyCitizensPlugin;
-import com.electro.hycitizens.models.CitizenData;
 import com.electro.npctrading.commands.MainCommand;
 import com.electro.npctrading.interaction.TraderInteraction;
 import com.electro.npctrading.manager.NPCBindManager;
 import com.electro.npctrading.manager.TradeManager;
 import com.electro.npctrading.manager.TradersManager;
-import com.electro.npctrading.model.Trader;
+import com.electro.npctrading.manager.VaultManager;
 import com.electro.npctrading.ui.TradeUI;
 import com.electro.npctrading.ui.TradersUI;
 import com.electro.npctrading.util.ConfigManager;
-import com.hypixel.hytale.common.plugin.PluginIdentifier;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
-import com.hypixel.hytale.server.core.plugin.PluginManager;
 
 import javax.annotation.Nonnull;
 import java.nio.file.Paths;
@@ -28,6 +24,7 @@ public class NPCTradingPlugin extends JavaPlugin {
     private TradeUI tradeUI;
     private TradeManager tradeManager;
     private TraderInteraction traderInteraction;
+    private VaultManager vaultManager;
 
     public NPCTradingPlugin(@Nonnull JavaPluginInit init) {
         super(init);
@@ -36,6 +33,10 @@ public class NPCTradingPlugin extends JavaPlugin {
 
     @Override
     protected void setup() {
+        // Initialize VaultManager
+        vaultManager = new VaultManager();
+        vaultManager.initialize();
+
         // Initialize managers
         configManager = new ConfigManager(Paths.get("mods", "NPCTradingData"));
         tradersManager = new TradersManager(configManager);
@@ -83,5 +84,9 @@ public class NPCTradingPlugin extends JavaPlugin {
 
     public TradeManager getTradeManager() {
         return tradeManager;
+    }
+
+    public VaultManager getVaultManager() {
+        return vaultManager;
     }
 }

@@ -6,11 +6,11 @@ import com.electro.hycitizens.HyCitizensPlugin;
 import com.electro.hycitizens.models.CitizenData;
 import com.electro.npctrading.NPCTradingPlugin;
 import com.electro.npctrading.model.Trader;
+import com.electro.npctrading.model.TradeIngredient;
 import com.electro.npctrading.model.TradeOffer;
 import com.hypixel.hytale.common.plugin.PluginIdentifier;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
-import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.server.core.plugin.PluginManager;
@@ -29,14 +29,11 @@ import java.util.stream.Collectors;
 public class TradersUI {
     private final NPCTradingPlugin plugin;
 
-    // Session state per player to preserve data across UI transitions
     private static final Map<UUID, EditTraderState> editStates = new ConcurrentHashMap<>();
 
     public TradersUI(@Nonnull NPCTradingPlugin plugin) {
         this.plugin = plugin;
     }
-
-    // Session State
 
     private static class EditTraderState {
         String name = "";
@@ -46,33 +43,40 @@ public class TradersUI {
         int displayCount = 5;
         @Nullable UUID traderUuid;
 
-        // Item selection callback context
         int editingTradeIndex = -1;
         boolean editingInput = true; // true = input side, false = output side
+        int editingSlotIndex = -1;   // which slot within the side
     }
 
     private static class TradePair {
-        String inputItemId;
-        int inputQuantity;
-        String outputItemId;
-        int outputQuantity;
+        List<TradeIngredientEdit> inputs = new ArrayList<>();
+        List<TradeIngredientEdit> outputs = new ArrayList<>();
 
-        TradePair() {
-            this.inputItemId = null;
-            this.inputQuantity = 1;
-            this.outputItemId = null;
-            this.outputQuantity = 1;
-        }
-
-        TradePair(String inputItemId, int inputQuantity, String outputItemId, int outputQuantity) {
-            this.inputItemId = inputItemId;
-            this.inputQuantity = inputQuantity;
-            this.outputItemId = outputItemId;
-            this.outputQuantity = outputQuantity;
-        }
+        // Restocking
+        boolean stockEnabled = false;
+        int maxStock = 10;
+        int restockAmount = 1;
+        int restockIntervalMinutes = 60;
 
         boolean isComplete() {
-            return inputItemId != null && outputItemId != null;
+            if (inputs.isEmpty() || outputs.isEmpty()) return false;
+            for (TradeIngredientEdit i : inputs) if (!i.isSet()) return false;
+            for (TradeIngredientEdit o : outputs) if (!o.isSet()) return false;
+            return true;
+        }
+    }
+
+    private static class TradeIngredientEdit {
+        enum Type { ITEM, CURRENCY }
+
+        Type type = Type.ITEM;
+        String itemId = null;
+        int quantity = 1;
+        String currencyName = null;
+        double amount = 0.0;
+
+        boolean isSet() {
+            return type == Type.ITEM ? itemId != null : amount > 0;
         }
     }
 
@@ -88,10 +92,39 @@ public class TradersUI {
                 state.rotationInterval = trader.getRotationIntervalMinutes();
                 state.displayCount = trader.getDisplayedItemCount();
                 for (TradeOffer offer : trader.getTrades()) {
-                    state.trades.add(new TradePair(
-                            offer.inputItem(), offer.inputQuantity(),
-                            offer.outputItem(), offer.outputQuantity()
-                    ));
+                    TradePair pair = new TradePair();
+                    for (TradeIngredient input : offer.getInputs()) {
+                        TradeIngredientEdit edit = new TradeIngredientEdit();
+                        if (input.getType() == TradeIngredient.Type.ITEM) {
+                            edit.type = TradeIngredientEdit.Type.ITEM;
+                            edit.itemId = input.getItemId();
+                            edit.quantity = input.getQuantity();
+                        } else {
+                            edit.type = TradeIngredientEdit.Type.CURRENCY;
+                            edit.currencyName = input.getCurrency();
+                            edit.amount = input.getAmount();
+                        }
+                        pair.inputs.add(edit);
+                    }
+                    for (TradeIngredient output : offer.getOutputs()) {
+                        TradeIngredientEdit edit = new TradeIngredientEdit();
+                        if (output.getType() == TradeIngredient.Type.ITEM) {
+                            edit.type = TradeIngredientEdit.Type.ITEM;
+                            edit.itemId = output.getItemId();
+                            edit.quantity = output.getQuantity();
+                        } else {
+                            edit.type = TradeIngredientEdit.Type.CURRENCY;
+                            edit.currencyName = output.getCurrency();
+                            edit.amount = output.getAmount();
+                        }
+                        pair.outputs.add(edit);
+                    }
+                    pair.stockEnabled = !offer.isUnlimitedStock();
+                    pair.maxStock = offer.isUnlimitedStock() ? 10 : offer.getMaxStock();
+                    pair.restockAmount = offer.getRestockAmount() > 0 ? offer.getRestockAmount() : 1;
+                    pair.restockIntervalMinutes = offer.getRestockIntervalMs() > 0
+                            ? (int) (offer.getRestockIntervalMs() / 60000L) : 60;
+                    state.trades.add(pair);
                 }
             }
             editStates.put(playerId, state);
@@ -103,7 +136,6 @@ public class TradersUI {
         editStates.remove(playerRef.getUuid());
     }
 
-    // Shared Styles
     private String getSharedStyles() {
         return """
                 <style>
@@ -583,7 +615,6 @@ public class TradersUI {
         public int getCitizenCount() { return trader.getCitizenIds().size(); }
     }
 
-    // Traders List GUI
     public void openTradersGUI(@Nonnull PlayerRef playerRef, @Nonnull Store<EntityStore> store) {
         Collection<Trader> traders = plugin.getTradersManager().getAllTraders();
 
@@ -689,7 +720,6 @@ public class TradersUI {
         }
     }
 
-    // Edit Trader GUI
     public void openEditTraderGUI(@Nonnull PlayerRef playerRef, @Nonnull Store<EntityStore> store, @Nullable Trader trader) {
         EditTraderState state = getOrCreateState(playerRef, trader);
         boolean isEditing = state.traderUuid != null;
@@ -706,60 +736,81 @@ public class TradersUI {
         for (int i = 0; i < state.trades.size(); i++) {
             TradePair pair = state.trades.get(i);
 
-            String inputContent = pair.inputItemId != null
-                    ? "<span class=\"slot-icon item-icon\" data-hyui-item-id=\"" + pair.inputItemId + "\"></span>"
-                    : "<span class=\"slot-icon item-icon\" data-hyui-item-id=\"\"></span>";
+            // Build input slots HTML
+            StringBuilder inputSlotsHtml = new StringBuilder();
+            for (int s = 0; s < pair.inputs.size(); s++) {
+                if (s > 0) inputSlotsHtml.append("<div style=\"flex-weight: 0; anchor-width: 6;\"></div>\n");
+                inputSlotsHtml.append(buildIngredientSlotHtml("slot-in-" + i + "-" + s, "remove-in-" + i + "-" + s, pair.inputs.get(s)));
+            }
 
-            String outputContent = pair.outputItemId != null
-                    ? "<span class=\"slot-icon item-icon\" data-hyui-item-id=\"" + pair.outputItemId + "\"></span>"
-                    : "<span class=\"slot-icon item-icon\" data-hyui-item-id=\"\"></span>";
+            // Build output slots HTML
+            StringBuilder outputSlotsHtml = new StringBuilder();
+            for (int s = 0; s < pair.outputs.size(); s++) {
+                if (s > 0) outputSlotsHtml.append("<div style=\"flex-weight: 0; anchor-width: 6;\"></div>\n");
+                outputSlotsHtml.append(buildIngredientSlotHtml("slot-out-" + i + "-" + s, "remove-out-" + i + "-" + s, pair.outputs.get(s)));
+            }
 
-            String inputLabel = pair.inputItemId != null
-                    ? "<p class=\"slot-label slot-label-filled\">" + pair.inputQuantity + "x</p>"
-                    : "";
-
-            String outputLabel = pair.outputItemId != null
-                    ? "<p class=\"slot-label slot-label-filled\">" + pair.outputQuantity + "x</p>"
-                    : "";
+            String checkedAttr = pair.stockEnabled ? "checked" : "";
 
             tradesHtml.append("""
-                <div class="trade-row">
+            <div style="layout: top; flex-weight: 0; background-color: #21262d; padding: 10; border-radius: 6;">
+                <div style="layout: left; flex-weight: 0; padding-bottom: 6;">
                     <p class="trade-index">#%d</p>
-                    <div class="spacer-h-sm"></div>
-                    <div class="slot-background">
-                        <button id="input-%d" class="slot-container" style="layout: top; flex-direction: column;">
-                            %s
-                            %s
-                        </button>
-                    </div>
-                    <div class="spacer-h-sm"></div>
-                    <p class="trade-arrow">-></p>
-                    <div class="spacer-h-sm"></div>
-                    <div class="slot-background">
-                        <button id="output-%d" class="slot-container" style="layout: top; flex-direction: column;">
-                            %s
-                            %s
-                        </button>
-                    </div>
-                    <div style="flex-weight: 0; anchor-width: 24;"></div>
+                    <div style="flex-weight: 1;"></div>
                     <button id="delete-trade-%d" class="btn-danger btn-small">Delete</button>
                 </div>
-                <div class="spacer-sm"></div>
-                """.formatted(
+                <div style="layout: center; flex-weight: 0;">
+                    <div style="layout: left; flex-weight: 0;">
+                        %s
+                        <div style="flex-weight: 0; anchor-width: 8;"></div>
+                        <button id="add-item-in-%d" class="btn-secondary" style="anchor-height: 34; anchor-width: 120; font-size: 10;">+Item</button>
+                        <div style="flex-weight: 0; anchor-width: 4;"></div>
+                        <button id="add-curr-in-%d" class="btn-secondary" style="anchor-height: 34; anchor-width: 80; font-size: 10;">+$</button>
+                    </div>
+                    <p class="trade-arrow">-></p>
+                    <div style="layout: left; flex-weight: 0;">
+                        %s
+                        <div style="flex-weight: 0; anchor-width: 8;"></div>
+                        <button id="add-item-out-%d" class="btn-secondary" style="anchor-height: 34; anchor-width: 120; font-size: 10;">+Item</button>
+                        <div style="flex-weight: 0; anchor-width: 4;"></div>
+                        <button id="add-curr-out-%d" class="btn-secondary" style="anchor-height: 34; anchor-width: 80; font-size: 10;">+$</button>
+                    </div>
+                </div>
+                <div class="spacer-md"></div>
+                <div style="layout: left; flex-weight: 0; padding-top: 8; align-items: center;">
+                    <input type="checkbox" id="stock-enable-%d" %s />
+                    <p style="color: #8b949e; font-size: 10; padding-left: 4; padding-right: 8;">Stock limit</p>
+                    <p style="color: #6e7681; font-size: 10; padding-right: 4;">Max:</p>
+                    <input type="number" id="stock-max-%d" value="%d" min="1" max="9999999" step="1" data-hyui-max-decimal-places="0" style="anchor-width: 64; anchor-height: 26; font-size: 10; background-color: #0d1117; border-radius: 4;" />
+                    <p style="color: #6e7681; font-size: 10; padding-left: 8; padding-right: 4;">Restock:</p>
+                    <input type="number" id="stock-amount-%d" value="%d" min="1" max="9999999" step="1" data-hyui-max-decimal-places="0" style="anchor-width: 56; anchor-height: 26; font-size: 10; background-color: #0d1117; border-radius: 4;" />
+                    <p style="color: #6e7681; font-size: 10; padding-left: 4; padding-right: 4;">every</p>
+                    <input type="number" id="stock-interval-%d" value="%d" min="1" max="9999999" step="1" data-hyui-max-decimal-places="0" style="anchor-width: 64; anchor-height: 26; font-size: 10; background-color: #0d1117; border-radius: 4;" />
+                    <p style="color: #6e7681; font-size: 10; padding-left: 4;">min</p>
+                </div>
+            </div>
+            <div class="spacer-sm"></div>
+            """.formatted(
                     i + 1,
-                    i, inputContent, inputLabel,
-                    i, outputContent, outputLabel,
-                    i
-                ));
+                    i,
+                    inputSlotsHtml.toString(),
+                    i, i,
+                    outputSlotsHtml.toString(),
+                    i, i,
+                    i, checkedAttr,
+                    i, pair.maxStock,
+                    i, pair.restockAmount,
+                    i, pair.restockIntervalMinutes
+            ));
         }
 
         String tradesContent;
         if (state.trades.isEmpty()) {
             tradesContent = """
-                    <div style="layout: center; flex-weight: 0; padding: 20;">
-                        <p style="color: #6e7681; font-size: 12; text-align: center;">No trades yet. Click "Add Trade" below.</p>
-                    </div>
-                    """;
+                <div style="layout: center; flex-weight: 0; padding: 20;">
+                    <p style="color: #6e7681; font-size: 12; text-align: center;">No trades yet. Click "Add Trade" below.</p>
+                </div>
+                """;
         } else {
             tradesContent = tradesHtml.toString();
         }
@@ -773,8 +824,7 @@ public class TradersUI {
                 .setVariable("displayCount", state.displayCount)
                 .setVariable("citizenCount", citizenCount);
 
-        // Concatenate trades directly into the HTML rather than using a template variable
-        String html = template.process(getSharedStyles() + """
+        String processedHtml = template.process(getSharedStyles() + """
         <div class="page-overlay">
             <div class="main-container" style="anchor-width: 900; anchor-height: 900;">
         
@@ -810,7 +860,7 @@ public class TradersUI {
                         
                         <div class="spacer-sm"></div>
                         
-                        """ + tradesContent + """
+                        %%TRADES_PLACEHOLDER%%
                         
                         <div class="spacer-sm"></div>
                         
@@ -878,6 +928,8 @@ public class TradersUI {
         </div>
         """);
 
+        String html = processedHtml.replace("%%TRADES_PLACEHOLDER%%", tradesContent);
+
         PageBuilder page = PageBuilder.pageForPlayer(playerRef)
                 .withLifetime(CustomPageLifetime.CanDismiss)
                 .fromHtml(html);
@@ -896,25 +948,103 @@ public class TradersUI {
             state.name = ctx.getValue("trader-name", String.class).orElse("");
         });
 
-        // Trade item buttons - input side
+        // Trade slot buttons
         for (int i = 0; i < state.trades.size(); i++) {
-            final int index = i;
+            final int tradeIdx = i;
+            final TradePair pair = state.trades.get(i);
 
-            page.addEventListener("input-" + i, CustomUIEventBindingType.Activating, event -> {
-                state.editingTradeIndex = index;
+            // Input slots
+            for (int s = 0; s < pair.inputs.size(); s++) {
+                final int slotIdx = s;
+                final TradeIngredientEdit.Type slotType = pair.inputs.get(s).type;
+                page.addEventListener("slot-in-" + tradeIdx + "-" + slotIdx, CustomUIEventBindingType.Activating, event -> {
+                    state.editingTradeIndex = tradeIdx;
+                    state.editingInput = true;
+                    state.editingSlotIndex = slotIdx;
+                    if (slotType == TradeIngredientEdit.Type.ITEM) {
+                        openItemSelectionGUI(playerRef, store, trader, "", 0);
+                    } else {
+                        openCurrencySelectionGUI(playerRef, store, trader);
+                    }
+                });
+                page.addEventListener("remove-in-" + tradeIdx + "-" + slotIdx, CustomUIEventBindingType.Activating, event -> {
+                    state.trades.get(tradeIdx).inputs.remove(slotIdx);
+                    openEditTraderGUI(playerRef, store, trader);
+                });
+            }
+
+            // Output slots
+            for (int s = 0; s < pair.outputs.size(); s++) {
+                final int slotIdx = s;
+                final TradeIngredientEdit.Type slotType = pair.outputs.get(s).type;
+                page.addEventListener("slot-out-" + tradeIdx + "-" + slotIdx, CustomUIEventBindingType.Activating, event -> {
+                    state.editingTradeIndex = tradeIdx;
+                    state.editingInput = false;
+                    state.editingSlotIndex = slotIdx;
+                    if (slotType == TradeIngredientEdit.Type.ITEM) {
+                        openItemSelectionGUI(playerRef, store, trader, "", 0);
+                    } else {
+                        openCurrencySelectionGUI(playerRef, store, trader);
+                    }
+                });
+                page.addEventListener("remove-out-" + tradeIdx + "-" + slotIdx, CustomUIEventBindingType.Activating, event -> {
+                    state.trades.get(tradeIdx).outputs.remove(slotIdx);
+                    openEditTraderGUI(playerRef, store, trader);
+                });
+            }
+
+            // Add item/currency buttons
+            page.addEventListener("add-item-in-" + tradeIdx, CustomUIEventBindingType.Activating, event -> {
+                state.trades.get(tradeIdx).inputs.add(new TradeIngredientEdit());
+                state.editingTradeIndex = tradeIdx;
                 state.editingInput = true;
+                state.editingSlotIndex = state.trades.get(tradeIdx).inputs.size() - 1;
                 openItemSelectionGUI(playerRef, store, trader, "", 0);
             });
-
-            page.addEventListener("output-" + i, CustomUIEventBindingType.Activating, event -> {
-                state.editingTradeIndex = index;
+            page.addEventListener("add-curr-in-" + tradeIdx, CustomUIEventBindingType.Activating, event -> {
+                TradeIngredientEdit edit = new TradeIngredientEdit();
+                edit.type = TradeIngredientEdit.Type.CURRENCY;
+                state.trades.get(tradeIdx).inputs.add(edit);
+                state.editingTradeIndex = tradeIdx;
+                state.editingInput = true;
+                state.editingSlotIndex = state.trades.get(tradeIdx).inputs.size() - 1;
+                openCurrencySelectionGUI(playerRef, store, trader);
+            });
+            page.addEventListener("add-item-out-" + tradeIdx, CustomUIEventBindingType.Activating, event -> {
+                state.trades.get(tradeIdx).outputs.add(new TradeIngredientEdit());
+                state.editingTradeIndex = tradeIdx;
                 state.editingInput = false;
+                state.editingSlotIndex = state.trades.get(tradeIdx).outputs.size() - 1;
                 openItemSelectionGUI(playerRef, store, trader, "", 0);
             });
+            page.addEventListener("add-curr-out-" + tradeIdx, CustomUIEventBindingType.Activating, event -> {
+                TradeIngredientEdit edit = new TradeIngredientEdit();
+                edit.type = TradeIngredientEdit.Type.CURRENCY;
+                state.trades.get(tradeIdx).outputs.add(edit);
+                state.editingTradeIndex = tradeIdx;
+                state.editingInput = false;
+                state.editingSlotIndex = state.trades.get(tradeIdx).outputs.size() - 1;
+                openCurrencySelectionGUI(playerRef, store, trader);
+            });
 
-            page.addEventListener("delete-trade-" + i, CustomUIEventBindingType.Activating, event -> {
-                state.trades.remove(index);
+            // Delete trade
+            page.addEventListener("delete-trade-" + tradeIdx, CustomUIEventBindingType.Activating, event -> {
+                state.trades.remove(tradeIdx);
                 openEditTraderGUI(playerRef, store, trader);
+            });
+
+            // Stock settings
+            page.addEventListener("stock-enable-" + tradeIdx, CustomUIEventBindingType.ValueChanged, (event, ctx) -> {
+                pair.stockEnabled = ctx.getValue("stock-enable-" + tradeIdx, Boolean.class).orElse(false);
+            });
+            page.addEventListener("stock-max-" + tradeIdx, CustomUIEventBindingType.ValueChanged, (event, ctx) -> {
+                ctx.getValue("stock-max-" + tradeIdx, Double.class).ifPresent(v -> pair.maxStock = Math.max(1, v.intValue()));
+            });
+            page.addEventListener("stock-amount-" + tradeIdx, CustomUIEventBindingType.ValueChanged, (event, ctx) -> {
+                ctx.getValue("stock-amount-" + tradeIdx, Double.class).ifPresent(v -> pair.restockAmount = Math.max(1, v.intValue()));
+            });
+            page.addEventListener("stock-interval-" + tradeIdx, CustomUIEventBindingType.ValueChanged, (event, ctx) -> {
+                ctx.getValue("stock-interval-" + tradeIdx, Double.class).ifPresent(v -> pair.restockIntervalMinutes = Math.max(1, v.intValue()));
             });
         }
 
@@ -980,13 +1110,40 @@ public class TradersUI {
 
             // Build trades from state
             List<TradeOffer> newTrades = new ArrayList<>();
+            int skippedTrades = 0;
             for (TradePair pair : state.trades) {
                 if (pair.isComplete()) {
-                    newTrades.add(new TradeOffer(
-                            pair.inputItemId, pair.inputQuantity,
-                            pair.outputItemId, pair.outputQuantity
-                    ));
+                    List<TradeIngredient> inputs = new ArrayList<>();
+                    for (TradeIngredientEdit edit : pair.inputs) {
+                        if (edit.type == TradeIngredientEdit.Type.ITEM) {
+                            inputs.add(new TradeIngredient(edit.itemId, edit.quantity));
+                        } else {
+                            String currency = (edit.currencyName != null && !edit.currencyName.isBlank()) ? edit.currencyName : null;
+                            inputs.add(new TradeIngredient(currency, edit.amount));
+                        }
+                    }
+                    List<TradeIngredient> outputs = new ArrayList<>();
+                    for (TradeIngredientEdit edit : pair.outputs) {
+                        if (edit.type == TradeIngredientEdit.Type.ITEM) {
+                            outputs.add(new TradeIngredient(edit.itemId, edit.quantity));
+                        } else {
+                            String currency = (edit.currencyName != null && !edit.currencyName.isBlank()) ? edit.currencyName : null;
+                            outputs.add(new TradeIngredient(currency, edit.amount));
+                        }
+                    }
+                    int maxStock = pair.stockEnabled ? pair.maxStock : -1;
+                    int currentStock = pair.stockEnabled ? pair.maxStock : 0;
+                    int restockAmount = pair.stockEnabled ? pair.restockAmount : 0;
+                    long restockIntervalMs = pair.stockEnabled ? pair.restockIntervalMinutes * 60L * 1000L : 0L;
+                    newTrades.add(new TradeOffer(inputs, outputs, maxStock, currentStock, restockAmount, restockIntervalMs, 0L));
                 }
+                else {
+                    skippedTrades++;
+                }
+            }
+
+            if (skippedTrades > 0) {
+                playerRef.sendMessage(Message.raw(skippedTrades + " incomplete trade(s) were not saved.").color(Color.YELLOW));
             }
 
             if (isEditing && trader != null) {
@@ -1205,7 +1362,7 @@ public class TradersUI {
             searchText[0] = ctx.getValue("item-search", String.class).orElse("");
         });
 
-        // Search button — reloads page 0 with the current search text
+        // Search button
         pageBuilder.addEventListener("search-btn", CustomUIEventBindingType.Activating, event -> {
             openItemSelectionGUI(playerRef, store, trader, searchText[0], 0);
         });
@@ -1251,10 +1408,12 @@ public class TradersUI {
         int currentQty = 1;
         if (state.editingTradeIndex >= 0 && state.editingTradeIndex < state.trades.size()) {
             TradePair pair = state.trades.get(state.editingTradeIndex);
-            if (state.editingInput && pair.inputItemId != null && pair.inputItemId.equals(itemId)) {
-                currentQty = pair.inputQuantity;
-            } else if (!state.editingInput && pair.outputItemId != null && pair.outputItemId.equals(itemId)) {
-                currentQty = pair.outputQuantity;
+            List<TradeIngredientEdit> list = state.editingInput ? pair.inputs : pair.outputs;
+            if (state.editingSlotIndex >= 0 && state.editingSlotIndex < list.size()) {
+                TradeIngredientEdit slot = list.get(state.editingSlotIndex);
+                if (slot.type == TradeIngredientEdit.Type.ITEM && itemId.equals(slot.itemId)) {
+                    currentQty = slot.quantity;
+                }
             }
         }
 
@@ -1348,15 +1507,13 @@ public class TradersUI {
         });
 
         page.addEventListener("qty-confirm-btn", CustomUIEventBindingType.Activating, event -> {
-            // Apply the selection to the state
             if (state.editingTradeIndex >= 0 && state.editingTradeIndex < state.trades.size()) {
                 TradePair pair = state.trades.get(state.editingTradeIndex);
-                if (state.editingInput) {
-                    pair.inputItemId = itemId;
-                    pair.inputQuantity = quantity[0];
-                } else {
-                    pair.outputItemId = itemId;
-                    pair.outputQuantity = quantity[0];
+                List<TradeIngredientEdit> list = state.editingInput ? pair.inputs : pair.outputs;
+                if (state.editingSlotIndex >= 0 && state.editingSlotIndex < list.size()) {
+                    TradeIngredientEdit slot = list.get(state.editingSlotIndex);
+                    slot.itemId = itemId;
+                    slot.quantity = quantity[0];
                 }
             }
             openEditTraderGUI(playerRef, store, trader);
@@ -1369,7 +1526,156 @@ public class TradersUI {
         page.open(store);
     }
 
-    // Delete Confirmation GUI
+    private String buildIngredientSlotHtml(String slotId, String removeId, TradeIngredientEdit slot) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style=\"layout: top; flex-weight: 0; align-items: center;\">\n");
+
+        if (slot.type == TradeIngredientEdit.Type.ITEM) {
+            String itemContent = slot.itemId != null
+                    ? "<span class=\"slot-icon item-icon\" data-hyui-item-id=\"" + slot.itemId + "\"></span>"
+                    : "<span class=\"slot-icon item-icon\" data-hyui-item-id=\"\"></span>";
+            String label = slot.itemId != null
+                    ? "<p class=\"slot-label slot-label-filled\">" + slot.quantity + "x</p>"
+                    : "";
+            sb.append("""
+                <div class="slot-background">
+                    <button id="%s" class="slot-container" style="layout: top; flex-direction: column;">
+                        %s
+                        %s
+                    </button>
+                </div>
+                """.formatted(slotId, itemContent, label));
+        } else {
+            String amountLine = slot.amount > 0
+                    ? (slot.amount == Math.floor(slot.amount) ? String.valueOf((long) slot.amount) : String.format("%.2f", slot.amount))
+                    : "?";
+            sb.append("""
+                <div class="slot-background">
+                    <button id="%s" class="slot-container small-tertiary-button">
+                        <p style="color: #FFD700; font-size: 12; font-weight: bold; text-align: center;">%s</p>
+                    </button>
+                </div>
+                """.formatted(slotId, amountLine));
+        }
+
+        sb.append("""
+            <button id="%s" style="anchor-width: 60; anchor-height: 24; border-radius: 3; background-color: #8B0000(0.8);">
+                <p style="color: #ffffff; font-size: 9; text-align: center;">X</p>
+            </button>
+            """.formatted(removeId));
+
+        sb.append("</div>\n");
+        return sb.toString();
+    }
+
+    private void openCurrencySelectionGUI(@Nonnull PlayerRef playerRef, @Nonnull Store<EntityStore> store,
+                                          @Nullable Trader trader) {
+        EditTraderState state = editStates.get(playerRef.getUuid());
+        if (state == null) return;
+
+        double currentAmount = 0.0;
+        String currentCurrency = "";
+        if (state.editingTradeIndex >= 0 && state.editingTradeIndex < state.trades.size()) {
+            TradePair pair = state.trades.get(state.editingTradeIndex);
+            List<TradeIngredientEdit> list = state.editingInput ? pair.inputs : pair.outputs;
+            if (state.editingSlotIndex >= 0 && state.editingSlotIndex < list.size()) {
+                TradeIngredientEdit slot = list.get(state.editingSlotIndex);
+                currentAmount = slot.amount;
+                currentCurrency = slot.currencyName != null ? slot.currencyName : "";
+            }
+        }
+
+        long currentAmountLong = (long) currentAmount; // safe since decimals=0
+        boolean vaultEnabled = plugin.getVaultManager().isEnabled();
+
+        TemplateProcessor template = createBaseTemplate()
+                .setVariable("currentAmount", currentAmountLong)
+                .setVariable("currentCurrency", currentCurrency);
+
+        String vaultWarning = vaultEnabled ? "" : """
+                        <div style="layout: top; flex-weight: 0; background-color: #7a3800(0.7); border-radius: 6; padding: 10; margin-bottom: 10;">
+                            <p style="color: #FFB347; font-size: 12; font-weight: bold; text-align: center;">VaultUnlocked Not Installed</p>
+                            <p style="color: #e6a060; font-size: 10; text-align: center; padding-top: 3;">Currency trades will not work until VaultUnlocked is installed on this server.</p>
+                        </div>
+                """;
+
+        String html = template.process(getSharedStyles() + """
+            <div class="page-overlay">
+                <div class="main-container" style="anchor-width: 500; anchor-height: 460;">
+
+                    <div class="header">
+                        <div class="header-content">
+                            <p class="header-title">Set Currency Amount</p>
+                            <p class="header-subtitle">Configure the economy payment</p>
+                        </div>
+                    </div>
+
+                    <div class="body">
+                        """ + vaultWarning + """
+                        <div class="qty-section">
+                            <div style="layout: center; flex-weight: 0;">
+                                <div style="layout: top; anchor-width: 300; flex-weight: 0;">
+                                    {{@numberField:id=currency-amount,label=Amount,value={{$currentAmount}},placeholder=0,min=0,max=9999999,step=1,decimals=0,hint=How much currency to pay or receive}}
+                                    <div class="spacer-sm"></div>
+                                    {{@formField:id=curr-label,label=Currency Name,value={{$currentCurrency}},placeholder=coins or gems,maxlength=32,hint=Leave blank for the server default currency}}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="footer">
+                        <button id="currency-back-btn" class="btn-ghost">Back</button>
+                        <div class="spacer-h-sm"></div>
+                        <button id="currency-confirm-btn" class="btn-primary" style="anchor-width: 160;">Confirm</button>
+                    </div>
+
+                </div>
+            </div>
+            """);
+
+        PageBuilder page = PageBuilder.pageForPlayer(playerRef)
+                .withLifetime(CustomPageLifetime.CanDismiss)
+                .fromHtml(html);
+
+        final double[] amount = {currentAmount};
+        final String[] currencyName = {currentCurrency};
+
+        page.addEventListener("currency-amount", CustomUIEventBindingType.ValueChanged, (event, ctx) -> {
+            ctx.getValue("currency-amount", Double.class).ifPresent(v -> amount[0] = Math.max(0, v));
+        });
+
+        page.addEventListener("curr-label", CustomUIEventBindingType.ValueChanged, (event, ctx) -> {
+            currencyName[0] = ctx.getValue("curr-label", String.class).orElse("").trim();
+        });
+
+        page.addEventListener("currency-confirm-btn", CustomUIEventBindingType.Activating, (event, ctx) -> {
+            ctx.getValue("currency-amount", Double.class).ifPresent(v -> amount[0] = Math.max(0, v));
+            ctx.getValue("curr-label", String.class).ifPresent(v -> currencyName[0] = v.trim());
+
+            if (amount[0] <= 0) {
+                playerRef.sendMessage(Message.raw("Currency amount must be greater than 0!").color(Color.RED));
+                openEditTraderGUI(playerRef, store, trader);
+                return;
+            }
+
+            if (state.editingTradeIndex >= 0 && state.editingTradeIndex < state.trades.size()) {
+                TradePair pair = state.trades.get(state.editingTradeIndex);
+                List<TradeIngredientEdit> list = state.editingInput ? pair.inputs : pair.outputs;
+                if (state.editingSlotIndex >= 0 && state.editingSlotIndex < list.size()) {
+                    TradeIngredientEdit slot = list.get(state.editingSlotIndex);
+                    slot.amount = amount[0];
+                    slot.currencyName = currencyName[0].isBlank() ? null : currencyName[0];
+                }
+            }
+            openEditTraderGUI(playerRef, store, trader);
+        });
+
+        page.addEventListener("currency-back-btn", CustomUIEventBindingType.Activating, event -> {
+            openEditTraderGUI(playerRef, store, trader);
+        });
+
+        page.open(store);
+    }
 
     private void openDeleteConfirmationGUI(PlayerRef playerRef, Store<EntityStore> store, Trader trader) {
         String html = getSharedStyles() + """
@@ -1437,8 +1743,6 @@ public class TradersUI {
 
         page.open(store);
     }
-
-    // HyCitizens Integration
 
     private boolean isHyCitizensInstalled() {
         PluginIdentifier id = new PluginIdentifier("com.electro", "HyCitizens");

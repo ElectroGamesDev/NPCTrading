@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.electro"
-version = "1.0.2"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -15,8 +15,8 @@ dependencies {
 
     compileOnly(fileTree("../") {
         include("HyCitizens-*.jar")
+        include("VaultUnlocked-Hytale-*.jar")
     })
-
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
 }

@@ -1,9 +1,9 @@
 package com.electro.npctrading.manager;
 
 import com.electro.npctrading.NPCTradingPlugin;
+import com.electro.npctrading.model.TradeIngredient;
 import com.electro.npctrading.model.TradeOffer;
 import com.electro.npctrading.model.Trader;
-import com.electro.npctrading.ui.TradeUI;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
@@ -16,6 +16,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import java.awt.*;
+import java.util.UUID;
 
 public class TradeManager {
     private final NPCTradingPlugin plugin;
@@ -43,50 +44,103 @@ public class TradeManager {
     }
 
     public boolean canAfford(@Nonnull PlayerRef playerRef, @Nonnull TradeOffer offer) {
-        return getItemCount(playerRef, offer.inputItem()) >= offer.inputQuantity();
+        offer.tickRestock();
+        if (!offer.isInStock()) return false;
+
+        UUID uuid = playerRef.getUuid();
+        VaultManager vault = plugin.getVaultManager();
+
+        for (TradeIngredient input : offer.getInputs()) {
+            if (input.getType() == TradeIngredient.Type.ITEM) {
+                if (input.getItemId() == null) {
+                    return true;
+                }
+
+                if (getItemCount(playerRef, input.getItemId()) < input.getQuantity()) {
+                    return false;
+                }
+            } else {
+                if (!vault.isEnabled() || !vault.has(uuid, input.getCurrency(), input.getAmount())) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
-    public boolean executeTrade(@Nonnull PlayerRef playerRef, @Nonnull TradeOffer offer) {
+    public boolean executeTrade(@Nonnull PlayerRef playerRef, @Nonnull TradeOffer offer, @Nonnull Trader trader) {
         var ref = playerRef.getReference();
-        if (ref == null || !ref.isValid())
-            return false;
+        if (ref == null || !ref.isValid()) return false;
 
         Store<EntityStore> store = ref.getStore();
         Player player = store.getComponent(ref, Player.getComponentType());
-        if (player == null)
-            return false;
+        if (player == null) return false;
 
         Inventory inventory = player.getInventory();
+        UUID uuid = playerRef.getUuid();
+        VaultManager vault = plugin.getVaultManager();
 
-        String inputItemName = plugin.getTradeUI().formatItemName(offer.inputItem());
-        String outputItemName = plugin.getTradeUI().formatItemName(offer.outputItem());
+        offer.tickRestock();
 
-        // Check if the player has enough input items
-        int totalAvailable = getItemCount(playerRef, offer.inputItem());
-        if (totalAvailable < offer.inputQuantity()) {
-            player.sendMessage(Message.raw("You do not have enough " + inputItemName + "(s) for this trade.").color(Color.RED));
+        if (!offer.isInStock()) {
+            player.sendMessage(Message.raw("This item is out of stock.").color(Color.RED));
             return false;
         }
 
-        // Remove input items from inventory
-        int remaining = offer.inputQuantity();
-        remaining = removeItemFromContainer(inventory.getHotbar(), offer.inputItem(), remaining);
-        if (remaining > 0) {
-            remaining = removeItemFromContainer(inventory.getStorage(), offer.inputItem(), remaining);
-        }
-        if (remaining > 0) {
-            remaining = removeItemFromContainer(inventory.getBackpack(), offer.inputItem(), remaining);
+        // Verify all inputs are available before touching anything
+        for (TradeIngredient input : offer.getInputs()) {
+            if (input.getType() == TradeIngredient.Type.ITEM) {
+                if (getItemCount(playerRef, input.getItemId()) < input.getQuantity()) {
+                    String name = plugin.getTradeUI().formatItemName(input.getItemId());
+                    player.sendMessage(Message.raw("You do not have enough " + name + " for this trade.").color(Color.RED));
+                    return false;
+                }
+            } else {
+                if (!vault.isEnabled()) {
+                    player.sendMessage(Message.raw("Economy is not available on this server.").color(Color.RED));
+                    return false;
+                }
+                if (!vault.has(uuid, input.getCurrency(), input.getAmount())) {
+                    String currencyLabel = vault.formatCurrency(input.getAmount(), input.getCurrency());
+                    player.sendMessage(Message.raw("You need " + currencyLabel + " for this trade.").color(Color.RED));
+                    return false;
+                }
+            }
         }
 
-        if (remaining > 0) {
-            player.sendMessage(Message.raw("You do not have enough resources for this trade.").color(Color.RED));
-            return false;
+        // Remove all inputs
+        for (TradeIngredient input : offer.getInputs()) {
+            if (input.getType() == TradeIngredient.Type.ITEM) {
+                int remaining = input.getQuantity();
+                remaining = removeItemFromContainer(inventory.getHotbar(), input.getItemId(), remaining);
+                if (remaining > 0) remaining = removeItemFromContainer(inventory.getStorage(), input.getItemId(), remaining);
+                if (remaining > 0) remaining = removeItemFromContainer(inventory.getBackpack(), input.getItemId(), remaining);
+                if (remaining > 0) {
+                    // Unexpected shortfall — abort (items already removed, but this shouldn't happen after the check above)
+                    player.sendMessage(Message.raw("Trade failed: inventory changed during trade.").color(Color.RED));
+                    return false;
+                }
+            } else {
+                if (!vault.withdraw(uuid, input.getCurrency(), input.getAmount())) {
+                    player.sendMessage(Message.raw("Trade failed: could not withdraw funds.").color(Color.RED));
+                    return false;
+                }
+            }
         }
 
-        // Give output items to the player
-        giveItem(inventory, offer.outputItem(), offer.outputQuantity());
-        player.sendMessage(Message.raw("You have successfully traded for " + outputItemName + "!").color(Color.GREEN));
+        // Give all outputs
+        for (TradeIngredient output : offer.getOutputs()) {
+            if (output.getType() == TradeIngredient.Type.ITEM) {
+                giveItem(inventory, output.getItemId(), output.getQuantity());
+            } else {
+                vault.deposit(uuid, output.getCurrency(), output.getAmount());
+            }
+        }
 
+        offer.consumeStock();
+        plugin.getTradersManager().saveTrader(trader);
+
+        player.sendMessage(Message.raw("Trade successful!").color(Color.GREEN));
         return true;
     }
 
@@ -100,15 +154,11 @@ public class TradeManager {
                 int stackCount = item.getQuantity();
 
                 if (stackCount <= remaining) {
-                    // Remove entire stack
                     container.removeItemStackFromSlot(i);
                     remaining -= stackCount;
                 } else {
-                    // Reduce stack quantity
-
                     container.removeItemStackFromSlot(i);
                     container.addItemStack(new ItemStack(itemId, stackCount - remaining));
-
                     remaining = 0;
                 }
             }
@@ -120,14 +170,9 @@ public class TradeManager {
     private void giveItem(@Nonnull Inventory inventory, @Nonnull String itemId, int quantity) {
         int remaining = quantity;
 
-        // Try to stack with existing items first, then fill empty slots
         remaining = addItemToContainer(inventory.getHotbar(), itemId, remaining);
-        if (remaining > 0) {
-            remaining = addItemToContainer(inventory.getStorage(), itemId, remaining);
-        }
-        if (remaining > 0) {
-            addItemToContainer(inventory.getBackpack(), itemId, remaining);
-        }
+        if (remaining > 0) remaining = addItemToContainer(inventory.getStorage(), itemId, remaining);
+        if (remaining > 0) addItemToContainer(inventory.getBackpack(), itemId, remaining);
     }
 
     private int addItemToContainer(@Nonnull ItemContainer container, @Nonnull String itemId, int quantity) {
@@ -139,7 +184,7 @@ public class TradeManager {
             maxStackSize = Item.getAssetMap().getAsset(itemId).getMaxStack();
         }
 
-        // Try to stack with existing items
+        // Stack with existing items first
         for (short i = 0; i < capacity && remaining > 0; i++) {
             ItemStack item = container.getItemStack(i);
             if (item != null && item.isValid() && item.getItemId().equals(itemId)) {
@@ -148,17 +193,14 @@ public class TradeManager {
 
                 if (canAdd > 0) {
                     int toAdd = Math.min(canAdd, remaining);
-                    int currentQuantity = item.getQuantity();
-
                     container.removeItemStackFromSlot(i);
-                    container.addItemStack(new ItemStack(itemId, currentQuantity + toAdd));
-
+                    container.addItemStack(new ItemStack(itemId, currentCount + toAdd));
                     remaining -= toAdd;
                 }
             }
         }
 
-        // Place in empty slots
+        // Fill empty slots
         for (short i = 0; i < capacity && remaining > 0; i++) {
             ItemStack item = container.getItemStack(i);
             if (item == null || !item.isValid()) {
