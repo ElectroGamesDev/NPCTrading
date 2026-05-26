@@ -4,9 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3f;
 import com.hypixel.hytale.protocol.PlayerSkin;
+import org.joml.Vector3d;
+import org.joml.Vector3f;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

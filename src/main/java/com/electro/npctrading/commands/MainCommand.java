@@ -38,7 +38,7 @@ public class MainCommand extends AbstractPlayerCommand{
             return;
         }
 
-        boolean hasAdminPermissions = player.hasPermission("npctrading.admin");
+        boolean hasAdminPermissions = playerRef.hasPermission("npctrading.admin");
 
         if (args.length > 1 || !hasAdminPermissions) {
             String traderName = "__NULL__";

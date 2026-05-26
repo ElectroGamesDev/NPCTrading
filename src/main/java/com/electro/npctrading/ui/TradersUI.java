@@ -1753,8 +1753,9 @@ public class TradersUI {
         try {
             HyCitizensPlugin hyCitizens = HyCitizensPlugin.get();
 
-            com.hypixel.hytale.math.vector.Vector3d position = new com.hypixel.hytale.math.vector.Vector3d(playerRef.getTransform().getPosition());
-            com.hypixel.hytale.math.vector.Vector3f rotation = new com.hypixel.hytale.math.vector.Vector3f(playerRef.getTransform().getRotation());
+            org.joml.Vector3d position = new org.joml.Vector3d(playerRef.getTransform().getPosition());
+            com.hypixel.hytale.math.vector.Rotation3f playerRotation = playerRef.getTransform().getRotation();
+            org.joml.Vector3f rotation = new org.joml.Vector3f(playerRotation.x(), playerRotation.y(), playerRotation.z());
             java.util.UUID worldUUID = playerRef.getWorldUuid();
 
             if (worldUUID == null) {

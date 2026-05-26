@@ -83,7 +83,7 @@ public class TradeManager {
         offer.tickRestock();
 
         if (!offer.isInStock()) {
-            player.sendMessage(Message.raw("This item is out of stock.").color(Color.RED));
+            playerRef.sendMessage(Message.raw("This item is out of stock.").color(Color.RED));
             return false;
         }
 
@@ -92,17 +92,17 @@ public class TradeManager {
             if (input.getType() == TradeIngredient.Type.ITEM) {
                 if (getItemCount(playerRef, input.getItemId()) < input.getQuantity()) {
                     String name = plugin.getTradeUI().formatItemName(input.getItemId());
-                    player.sendMessage(Message.raw("You do not have enough " + name + " for this trade.").color(Color.RED));
+                    playerRef.sendMessage(Message.raw("You do not have enough " + name + " for this trade.").color(Color.RED));
                     return false;
                 }
             } else {
                 if (!vault.isEnabled()) {
-                    player.sendMessage(Message.raw("Economy is not available on this server.").color(Color.RED));
+                    playerRef.sendMessage(Message.raw("Economy is not available on this server.").color(Color.RED));
                     return false;
                 }
                 if (!vault.has(uuid, input.getCurrency(), input.getAmount())) {
                     String currencyLabel = vault.formatCurrency(input.getAmount(), input.getCurrency());
-                    player.sendMessage(Message.raw("You need " + currencyLabel + " for this trade.").color(Color.RED));
+                    playerRef.sendMessage(Message.raw("You need " + currencyLabel + " for this trade.").color(Color.RED));
                     return false;
                 }
             }
@@ -117,12 +117,12 @@ public class TradeManager {
                 if (remaining > 0) remaining = removeItemFromContainer(inventory.getBackpack(), input.getItemId(), remaining);
                 if (remaining > 0) {
                     // Unexpected shortfall — abort (items already removed, but this shouldn't happen after the check above)
-                    player.sendMessage(Message.raw("Trade failed: inventory changed during trade.").color(Color.RED));
+                    playerRef.sendMessage(Message.raw("Trade failed: inventory changed during trade.").color(Color.RED));
                     return false;
                 }
             } else {
                 if (!vault.withdraw(uuid, input.getCurrency(), input.getAmount())) {
-                    player.sendMessage(Message.raw("Trade failed: could not withdraw funds.").color(Color.RED));
+                    playerRef.sendMessage(Message.raw("Trade failed: could not withdraw funds.").color(Color.RED));
                     return false;
                 }
             }
@@ -140,7 +140,7 @@ public class TradeManager {
         offer.consumeStock();
         plugin.getTradersManager().saveTrader(trader);
 
-        player.sendMessage(Message.raw("Trade successful!").color(Color.GREEN));
+        playerRef.sendMessage(Message.raw("Trade successful!").color(Color.GREEN));
         return true;
     }
 
