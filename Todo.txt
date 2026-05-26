@@ -1,19 +1,48 @@
-Commands
-HyCitizens Integration
-Scrollable container
-Put created NPCs in the "Traders" group
-Multiple NPCs for the same trading menu
-Automatically changing items every x time
-UI inspired by this - https://www.curseforge.com/hytale/mods/terraria-merchant-npcs
-Unlimited item support
-Have an "Edit NPC" button which open HyCitizens
+Economy Plugin support
+add "HyCitiens" as a "Optional Dependancy" when submitting the new jar
+Item restocking
+Run commands when purchase
+Ability to trade multiple items
+Custom item names
+
+Translation support for buttons and player send messages.
 
 
-Linking/binding Citizens
+feedback:
+"DeadlyCinder
 
-Test without hycitizens
+ — 5:04 AM
+Hi there,
+
+i use NPCTrading on my server for a while now and really love the simple setup etc. At the time i have some issues with the plugin, that i would love to see redone in a future update:
+
+Display for all Itemnames: So at the moment the name of the item you receive is display properly inside the UI. BUT not the name of the item you have to pay...thats not always that nice. Example: I use NPCTrading as Admin Shops on my server, the Users can trade their items for money (also an item btw, although using VaultUnlocked). The Miner gives you money for various sort of stones....and its almost impossible to tell which displayed icon is which stone type xd
+
+UI: The UI cant get really overwhelming really easily. As soon as you trader holds more than ten trades its basically endless scrolling and trying to figure out which trade does what. I would recommend more like a list as UI, where each line represents one trade offer. The UI as itself would have to grow way bigger to display all the functions, but i think it would be worth it. Could also include a search bar for finding items better
+
+include changing the order of the trades, its a pain to add a new trade to existing traders at the moment
+
+Include lang files please :3
+
+Thanks for your work 🙂 ❤️ 
+Molly — 5:54 PM
+If it hasn't been mentioned, would love a duplicate trade when you have very similar trades. Ex. we now have a plushie merchant that all have the same price, but paying for different items.
+So adding each one is a bit tedious haha
+Molly — 6:17 PM
+But did want to note- everyone has loved the new system (yours) since we've added it. Made trading a whole lot easier, faster, and better overall"
 
 
-Credit HyUI
+"When you Link a NPC to trade and then edit the NPC (remove old one and link new one) there are both connected and cannot be removed."
+"what happens, when a User Buys an item in npc trading but has no space in inventory to get it? Seems like it just disappears, got some furious users because of that"
 
-give and receive multiple item types
+TheEconomy using it says "Insufficient Resources"
+
+
+Add "either or" trades
+
+"Hi, im trying to create a npctrading shop where players can sell their fish from HyFishing Mod. But this Mod has a ton of different item IDs per Fish (example: HyFishing_Tang_Lemon_Peel_Common_Item_State_Epic, HyFishing_Tang_Lemon_Peel_Legendary_Item_State_Epic) because of its rarity and so on. Is it possible to reference them somehow? I would have to make tons of standalone trades for every variant..."
+
+Add support for unlinking trades
+
+
+Someone made a fork with some amazing changes here: https://discord.com/channels/@me/1495105408673644645/1495105745476124722
